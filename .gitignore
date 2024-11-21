@@ -1,0 +1,22 @@
+# Generated files
+bin/
+obj/
+*.key
+keystrokes.json
+conversation.json
+config.json
+*.log
+debug/
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio files
+.vs/
+*.user
+*.suo
+*.cache
