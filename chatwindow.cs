@@ -109,12 +109,13 @@ namespace KeyloggerProject
                 
                 if (messageData?.type == "sendMessage" && !string.IsNullOrEmpty(messageData.message))
                 {
-                    if (messageData.includeKeystrokes)
+                    if (messageData.includeKeystrokes && !conversation.Messages.Any())
                     {
                         conversation.Messages.Add(new Message
                         {
                             Role = "user",
                             Content = $"Hey, I'll send you my recent keystroke history as context for the forthcoming conversation: {keystrokeContext}. Please acknowledge by typing \"Y\"",
+                            Source = "keystroke-history",
                             Timestamp = DateTime.UtcNow
                         });
 
@@ -122,6 +123,7 @@ namespace KeyloggerProject
                         {
                             Role = "assistant",
                             Content = "Y",
+                            Source = "claude-3-haiku-20240307",
                             Timestamp = DateTime.UtcNow
                         });
                     }
@@ -130,6 +132,7 @@ namespace KeyloggerProject
                     {
                         Role = "user",
                         Content = messageData.message,
+                        Source = "user-input",
                         Timestamp = DateTime.UtcNow
                     });
 
@@ -209,9 +212,14 @@ namespace KeyloggerProject
                             var eventData = JsonSerializer.Deserialize<StreamEvent>(jsonData);
                             await webView.CoreWebView2.ExecuteScriptAsync($"console.log('Event:', `{jsonData}`);");
 
-                            if (eventData?.type == "content_block_delta" && 
-                                eventData.delta?.type == "text_delta" && 
-                                eventData.delta?.text != null)
+                            if (eventData?.type == "message_start" && eventData.message?.usage != null)
+                            {
+                                inputTokens = eventData.message.usage.input_tokens;
+                                Console.WriteLine($"Input tokens: {inputTokens}");
+                            }
+                            else if (eventData?.type == "content_block_delta" && 
+                                     eventData.delta?.type == "text_delta" && 
+                                     eventData.delta?.text != null)
                             {
                                 var textChunk = eventData.delta.text;
                                 fullResponse.Append(textChunk);
@@ -221,6 +229,15 @@ namespace KeyloggerProject
                             else if (eventData?.type == "message_delta" && eventData.usage != null)
                             {
                                 outputTokens = eventData.usage.output_tokens;
+                                Console.WriteLine($"Output tokens: {outputTokens}");
+                                
+                                if (inputTokens.HasValue && outputTokens.HasValue && 
+                                    Configuration.Instance.Models?.TryGetValue(model, out var modelConfig) == true)
+                                {
+                                    cost = (inputTokens.Value / 1000.0 * modelConfig.InputCost) +
+                                           (outputTokens.Value / 1000.0 * modelConfig.OutputCost);
+                                    Console.WriteLine($"Calculated cost: {cost}");
+                                }
                             }
                         }
                         catch (JsonException) { continue; }
@@ -228,31 +245,24 @@ namespace KeyloggerProject
                 }
 
                 StreamComplete:
-                if (fullResponse.Length > 0 && Configuration.Instance.Models != null)
+                if (fullResponse.Length > 0 && inputTokens.HasValue && outputTokens.HasValue)
                 {
-                    var modelConfig = Configuration.Instance.Models[model];
-                    if (inputTokens.HasValue && outputTokens.HasValue)
-                    {
-                        cost = (inputTokens.Value / 1000.0 * modelConfig.InputCost) +
-                               (outputTokens.Value / 1000.0 * modelConfig.OutputCost);
-                    }
-
                     conversation.Messages.Add(new Message
                     {
                         Role = "assistant",
                         Content = fullResponse.ToString(),
-                        Model = model,
+                        Source = model,
                         Cost = cost,
                         Timestamp = DateTime.UtcNow,
-                        Usage = inputTokens.HasValue && outputTokens.HasValue ? new Usage 
+                        Usage = new Usage 
                         { 
                             input_tokens = inputTokens.Value,
                             output_tokens = outputTokens.Value
-                        } : null
+                        }
                     });
 
                     await webView.CoreWebView2.ExecuteScriptAsync(
-                        $"finishStream({(cost.HasValue ? cost.Value.ToString() : "null")})");
+                        $"finishStream({(cost.HasValue ? cost.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "null")})");
                 }
             }
             catch (Exception ex)

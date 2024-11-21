@@ -50,6 +50,10 @@ document.addEventListener('DOMContentLoaded', () => {
         
         console.log('Creating message divs');
         addMessageToChat('user', message);
+
+        if (currentResponseDiv) {
+            currentResponseDiv.remove(); // Remove any existing response div
+        }    
         
         // Create response div with explicit logging
         currentResponseDiv = document.createElement('div');
@@ -61,9 +65,6 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Appended response div');
         
         messageBuffer = '';
-        currentResponseDiv = document.createElement('div');
-        currentResponseDiv.className = 'message assistant-message loading';
-        chatHistory.appendChild(currentResponseDiv);
         
         const modelSelect = document.getElementById('model-select');
         const includeKeystrokes = document.getElementById('include-keystrokes');
